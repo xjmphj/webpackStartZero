@@ -2,12 +2,13 @@
   "devDependencies": {
     "@babel/core": "^7.16.7",
     "@babel/plugin-proposal-decorators": "^7.16.7",
+    "@babel/plugin-transform-modules-umd": "^7.16.7",
     "@babel/plugin-transform-runtime": "^7.16.8",
     "@babel/preset-env": "^7.16.8",
     "@babel/preset-react": "^7.16.7",
     "babel-loader": "^8.2.3",
     "css-loader": "^6.5.1",
-    "html-webpack-plugin": "^5.5.0",
+    "html-webpack-plugin": "4.5.0",
     "mini-css-extract-plugin": "^2.5.2",
     "style-loader": "^3.3.1",
     "webpack": "^5.66.0",
@@ -20,6 +21,7 @@
   },
   "babel": {
     "plugins": [
+      "@babel/plugin-transform-modules-umd",
       "@babel/plugin-transform-runtime",
       [
         "@babel/plugin-proposal-decorators",

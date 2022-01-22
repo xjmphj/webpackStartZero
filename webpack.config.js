@@ -1,12 +1,15 @@
 const path = require("path");
 const MiniCssExtractPlugin = require('mini-css-extract-plugin')
-const HtmlWebpackPlugin = require('html-webpack-plugin')
+const HtmlWebpackPlugin = require('html-webpack-plugin');
+// const TemplatedPathPlugin = require("./my-plugin");
 
+// const AutoTryCatch = require("./try-catch-plugin");
+// const FileListPlugin = require('./file-list-plugin');
 module.exports = {
   mode: "development",
   devtool: "cheap-module-source-map",
   // 入口文件
-  entry: "./src/react.js",
+  entry: "./src/react2.js",
   output: {
     path: path.resolve(__dirname, "output"),
     // 默认叫main.js
@@ -33,6 +36,14 @@ module.exports = {
           },
         },
       },
+      // { 
+      //   test: /\.html?$/, 
+      //   use:{
+      //     loader: require.resolve('html-loader'),
+      //     options:{
+      //     }
+      //   }
+      // },
       {
         test: /\.css$/,
         use: [ 
@@ -43,16 +54,39 @@ module.exports = {
             //   modules: true
             // },
         }],
+        exclude:[
+          path.resolve(__dirname, "./src/style.mobile.css")
+        ]
       },
-    ],
+      {
+        test: /\.mobile\.css$/,
+        use: [MiniCssExtractPlugin.loader, {
+          loader: 'css-loader',
+          /* options: {
+            modules: true
+          } */
+        }, {
+          loader: './mobile-css-loader',
+          options: {
+            width: 750,
+          }
+        }]
+      }
+    ]
   },
   plugins: [
+    // new TemplatedPathPlugin(),
+    // new FileListPlugin({
+    //   filename:'list.md'
+    // }),
+    new AutoTryCatch(),
     new MiniCssExtractPlugin({
       filename: '[name].css',
       chunkFilename: '[id].css'
     }),
     new HtmlWebpackPlugin({
-      template: './index.html'
+      filename:'index.html', //配置输出文件名和路径
+      template: './index.html' //配置文件模板
     })
   ],
   optimization: {
@@ -66,5 +100,8 @@ module.exports = {
         },
       },
     },
+  },
+  stats: {
+    children: true,
   },
 };

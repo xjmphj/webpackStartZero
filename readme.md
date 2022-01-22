@@ -577,6 +577,354 @@ happyPack 多线程打包
 
 vite 减少打包内容
 
+### 引入本地组件umd 组件的问题
+安装 `npm install --save-dev @babel/plugin-transform-modules-umd`
+
+### 自定义my-plugin
+
+创建一个 my-plugin.js 文件
+```js
+const replacePathVariables = (path, options) => {
+  path = path + '111'
+  return path;
+};
+
+
+const plugin = "TemplatedPathPlugin";
+class TemplatedPathPlugin {
+  apply(compiler) {
+    // 回调参数根据 compiler.hooks.<hook name> hook name 文档上的数据来查看
+    // compiler.hooks.run.tap(plugin, compiler => {
+    //   console.log(compiler)
+    // });
+    compiler.hooks.compilation.tap(plugin, compilation => {
+      compilation.hooks.assetPath.tap(plugin, replacePathVariables)
+    })
+  }
+}
+
+module.exports = TemplatedPathPlugin
+```
+webpack.config.js 中引入 
+> plugin 需要导入，但是loader不需要导入，只需要安装
+
+```
+const TemplatedPathPlugin = require("./my-plugin");
+module.exports = {
+  ...
+  plugins: [
+    new TemplatedPathPlugin(),
+    new MiniCssExtractPlugin({
+      filename: '[name].css',
+      chunkFilename: '[id].css'
+    }),
+    new HtmlWebpackPlugin({
+      template: './index.html'
+    })
+  ],
+  stats: {
+    children: true,
+  },
+  ...
+}
+```
+最终 `yarn buid` 产生了 output111 文件夹及子文件
+
+
+
+### 自定义的loader 
+创建一个自定义的loader
+```
+// mobile-css-loader.js
+
+const { getOptions } = require('loader-utils');
+const { validate } = require('schema-utils');
+
+const schema = {
+  type: 'object',
+  properties: {
+    width: {
+      type: 'number',
+    },
+  },
+};
+
+module.exports = function loader(source) {
+  const options = getOptions(this);
+  validate(schema, options, {
+    name: 'px2vw Loader',
+    baseDataPath: 'options',
+  });
+  const px2vw = px => px / options.width * 100 + 'vw';
+  return source.replace(/(\d+)px/g, (_, px) => px2vw(px));
+};
+
+```
+src 下创建一个 style.mobile.css
+
+```
+#app {
+  font-size: 40px;
+}
+```
+
+reat.js 中引入
+```
+import './style.mobile.css'
+```
+
+
+webpack.config.js 中使用
+
+```
+ {
+  test: /\.css$/,
+  use: [ 
+    MiniCssExtractPlugin.loader,
+    {
+      loader: "css-loader",
+      // options: {
+      //   modules: true
+      // },
+  }],
+  exclude:[
+    path.resolve(__dirname, "./src/style.mobile.css")
+  ]
+},
+{
+  test: /\.mobile\.css$/,
+  use: [MiniCssExtractPlugin.loader, {
+    loader: 'css-loader',
+    /* options: {
+      modules: true
+    } */
+  }, {
+    loader: './mobile-css-loader',
+    options: {
+      width: 750,
+    }
+  }]
+}
+```
+
+yarn start 启动项目，运行起来
+```
+ // main.css 样式已经被修改
+ /*!***************************************************************************************************************************!*\
+  !*** css ./node_modules/css-loader/dist/cjs.js!./mobile-css-loader.js??ruleSet[1].rules[2].use[2]!./src/style.mobile.css ***!
+  \***************************************************************************************************************************/
+#app {
+  font-size: 5.333333333333334vw;
+}
+
+/*# sourceMappingURL=main.css.map*/
+
+ ```
+
+ > 注意，需要从 css 规则中排除掉 mobile.style.css 文件，然后再匹配 mobile.style.css 的规则 用 mobile-css-loader
+
+
+### 自定义 try-catch-plugin
+
+实现一个函数中如果是异步函数，添加try-catch 包裹
+
+```js
+ //react2.js
+ console.log(0);
+
+async function test() {
+  console.log(1);
+}
+
+function test2() {
+  console.log(1);
+}
+
+function test3() {
+  try {
+    console.log(1);
+  } catch(e) {
+    //TODO handle the exception
+  }
+  
+}
+
+/* async function test() {
+  try{
+    console.log(1);
+  } catch(e) {
+    //TODO handle the exception
+  }
+} */
+```
+
+webpack.config.js 修改文件入口
+
+```js
+const AutoTryCatch = require("./try-catch-plugin");
+...
+ entry: "./src/react2.js",
+...
+plugins: [
+    new AutoTryCatch(),
+    new MiniCssExtractPlugin({
+      filename: '[name].css',
+      chunkFilename: '[id].css'
+    }),
+    new HtmlWebpackPlugin({
+      filename:'index.html', //配置输出文件名和路径
+      template: './index.html' //配置文件模板
+    })
+  ],
+```
+新建 try-catch-plugin.js
+
+```js
+// try-catch-plugin
+const fs = require("fs");
+const path = require("path");
+// 转换代码
+const parse = require("@babel/parser").parse;
+const traverse = require("@babel/traverse").default;
+const generator = require("@babel/generator").default;
+const template = require("@babel/template").default;
+const t = require("@babel/types");
+
+const pluginName = "AutoTryCatch";
+
+class AutoTryCatch {
+  constructor(options) {
+    this.options = options || { dir: ["src"], pattern: [".js"] };
+    // 匹配的文件格式
+    this.pattern = this.options.pattern;
+  }
+
+  apply(compiler) {
+    //在 compilation 完成时执行。
+    compiler.hooks.done.tap(pluginName, (stats) => {
+      //遍历src 文件下的子文件
+      this.options.dir.forEach((item) => {
+        const path1 = path.resolve(item);
+        //同步读取文件路径
+        fs.readdir(path1, (err, files) => {
+          // 同步读取文件，node 经典的 err前置
+          if (!err) {
+            // 都当文件处理
+            files.forEach((filename) => {
+              const absPath = path.resolve(item, filename);
+              const extname = path.extname(filename);
+              // 这里做了一个约束条件，对于其他类型的文件，总是报错,只处理react2.js
+              if (this.pattern.includes(extname) && absPath.indexOf('react2.js') > 0) {
+                // 获取抽象语法树 是一个json
+                const ast = this.getAst(absPath);
+                // 递归处理抽象语法树
+                this.handleTraverse(ast, absPath);
+              }
+            });
+          }
+        });
+      });
+    });
+  }
+
+  getAst(filename) {
+    // 
+    const content = fs.readFileSync(filename, 'utf-8');
+    try {
+      // 文件内容转换为抽象语法树，sourceType: 'module' 指示代码应该被解析的模式
+      return parse(content, {
+        sourceType: 'module',
+        // 转换出错的时候，这里尝试处理
+        // plugins: [
+        //   "jsx",
+        // ],
+      })
+    } catch (e) {
+      return null;
+    }
+  }
+
+  handleTraverse(ast, filePath) {
+    let isChanged = false
+    const shouldHandleAst = path => {
+      // path 代表节点
+      // 获取节点类型
+      const types = path.node.body.body.map(({ type})=>type)
+      // 只有函数长度为1 且包含一个try-catch 函数的 或者 函数定义的长度>=1 并且不包含try-catch 函数的 函数需要被改变
+      isChanged = path.node.body.body.length > 1 && types.includes('TryStatement') || path.node.body.body.length && !types.includes('TryStatement')
+      if (isChanged) {
+        // 抽象语法树再转换回代码块包含try-catch 的
+        this.handleAst(ast, filePath)
+      }
+    }
+    // 递归转换ast,哪些定义的函数需要转换
+    traverse(ast, {
+      // 函数体定义的需要转换，后面是回调函数
+      FunctionDeclaration: shouldHandleAst,
+      // 函数表达式 ..
+      FunctionExpression: shouldHandleAst,
+      // 箭头函数 ...
+      ArrowFunctionExpression: shouldHandleAst
+    })
+  }
+
+  handleAst(ast, filePath) {
+    const _this = this;
+    traverse(ast, {
+      BlockStatement(path) {
+        // 不是trycatch 函数的进行转换
+        if(['FunctionDeclaration', 'FunctionExpression', 'ArrowFunctionExpression'].includes(path.parentPath.parentPath.type) && path.node.body[0].type !== 'TryStatement'){
+          // 生成tryCatch 内容
+          const tryStatement = _this.generateTryStatement(path.node);
+          // 包装成块
+          const blockStatement = t.blockStatement([tryStatement])
+          path.replaceWith(blockStatement)
+        }
+      },
+      Program: {
+        exit(){
+          _this.writeFileSync(ast, filePath)
+        }
+      }
+    })
+  }
+
+  generateTryStatement({body = []}) {
+    const nodeBody = t.blockStatement(body);
+    // 生成抽象语法树
+    return template.ast(`try 
+      ${generator(nodeBody).code} 
+      catch (err) {
+        console.log(err);
+      }`)
+  }
+
+  writeFileSync(ast, filePath) {
+    // 格式化后的代码
+    const output = generator(ast, {
+      retainLines: false,
+      quotes: 'single',
+      concise: false,
+      compact: false
+    })
+
+    fs.writeFileSync(filePath, output.code)
+  }
+}
+
+module.exports = AutoTryCatch;
+
+```
+
+`yarn build` 执行 生产了新的产物代码
+
+![image](/md-images/6.png)
+
+
+
+
+
+
 
 
 
