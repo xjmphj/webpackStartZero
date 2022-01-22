@@ -918,7 +918,7 @@ module.exports = AutoTryCatch;
 
 `yarn build` 执行 生产了新的产物代码
 
-![image](/md-images/6.png)
+![image](/md-images/6.jpg)
 
 
 
